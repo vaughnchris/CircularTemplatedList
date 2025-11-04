@@ -7,89 +7,101 @@
 
 #include "Media.h"
 #include <iostream>
-
+template <typename T>
 struct Node {
-    // Data is now hard-coded to the BASE CLASS pointer: Media*
-    Media* data;
+    T*    data;
     Node* next;
 
-    // Constructor initializes data and pointer
-    Node(Media* media) : data(media), next(nullptr) {}
+    explicit Node(T* media) : data(media), next(nullptr) {}
 };
 
-// === 5. Hard-coded LinkedList Class (Singly, Non-Circular) ===
-// This list is only capable of managing Media* objects (Song*, Podcast*, etc.) and is forward-only.
+// =======================
+// LinkedList (templated, singly-linked circular)
+// Stores T* (e.g., Media*) and supports polymorphic play()
+// =======================
+template <typename T>
 class LinkedList {
 private:
-    Node* head;
+    Node<T>* head;     // first element (nullptr if empty)
+    Node<T>* tail;     // last element (tail->next == head when non-empty)
+    Node<T>* current;  // for playNext() traversal
 
 public:
-    // Constructor: Initializes an empty list
-    LinkedList() : head(nullptr) {}
+    // Constructor: empty circular list
+    LinkedList() : head(nullptr), tail(nullptr), current(nullptr) {}
 
-    // Destructor: Cleans up all nodes and the Media objects they point to.
+    // Destructor: delete all nodes AND the owned T objects they point to
     ~LinkedList() {
-        Node* current = head;
-        Node* next_node = nullptr;
+        if (!head) return;
 
-        // Traverse the list until the end (nullptr) is reached
-        while (current != nullptr) {
-            next_node = current->next;
-
-            // Delete the Media object stored in the node's data pointer (polymorphic deletion)
-            delete current->data;
-
-            // Delete the node itself
-            delete current;
-
-            current = next_node;
+        // Break the cycle by iterating once around
+        Node<T>* cur = head->next;
+        while (cur != head) {
+            Node<T>* nxt = cur->next;
+            delete cur->data; // polymorphic delete via virtual destructor on base
+            delete cur;
+            cur = nxt;
         }
-        head = nullptr; // Ensure head is reset
-        std::cout << "\n[Playlist cleanup complete. All memory deallocated.]" << std::endl;
+        // delete head last
+        delete head->data;
+        delete head;
+
+        head = tail = current = nullptr;
+        std::cout << "\n[Playlist cleanup complete. All memory deallocated.]\n";
     }
 
-    // Insertion: Adds a new Media pointer to the end of the list.
-    void insert(Media* newMedia) {
-        Node* newNode = new Node(newMedia);
+    // Insert at END; maintain circular invariant tail->next == head
+    void insert(T* newMedia) {
+        Node<T>* newNode = new Node<T>(newMedia);
 
-        if (head == nullptr) {
-            // Case 1: List is empty. New node becomes the head.
-            head = newNode;
+        if (!head) {
+            // first node
+            head = tail = newNode;
+            tail->next = head;     // make circular
+            current = head;        // start playback from head
         } else {
-            // Case 2: Traverse to the end and link the new node.
-            Node* current = head;
-            while (current->next != nullptr) {
-                current = current->next;
-            }
-            current->next = newNode;
+            tail->next = newNode;  // old tail points to new
+            tail = newNode;        // advance tail
+            tail->next = head;     // keep circle intact
         }
     }
 
-    // Traversal: Displays all media items in the list.
+    // Display whole list once around
     void displayList() const {
-        if (head == nullptr) {
-            std::cout << "\n[Playlist is empty.]" << std::endl;
+        if (!head) {
+            std::cout << "\n[Playlist is empty.]\n";
             return;
         }
 
-        std::cout << "\n--- Current Playlist ---" << std::endl;
-        Node* current = head;
+        std::cout << "\n-- Current Playlist --\n";
+        const Node<T>* cur = head;
         int index = 1;
-        while (current != nullptr) {
-            // Polymorphism in action: calls the specific toString() method for Song or Podcast
-            std::cout << index++ << ". " << current->data->toString() << std::endl;
-            current = current->next;
-        }
-        std::cout << "------------------------" << std::endl;
+        do {
+            // polymorphism: toString() will dispatch to Song/Podcast implementation
+            std::cout << index++ << ". " << cur->data->toString() << std::endl;
+            cur = cur->next;
+        } while (cur != head);
+        std::cout << "----------------------\n";
     }
 
-    // Simple play method for demonstration (students will expand this later)
+    // Play the item at 'current' (or head if current not set)
     void playCurrent() const {
-        if (head != nullptr) {
-            head->data->play(); // Calls the virtual play() method
-        } else {
-            std::cout << "[Playlist is empty. Nothing to play.]" << std::endl;
+        if (!head) {
+            std::cout << "[Playlist is empty. Nothing to play.]\n";
+            return;
         }
+        (current ? current : head)->data->play();
+    }
+
+    // Advance one step (wraps automatically because it's circular) and play
+    void playNext() {
+        if (!head) {
+            std::cout << "[Playlist is empty. Nothing to play.]\n";
+            return;
+        }
+        if (!current) current = head; // safety
+        current = current->next;      // one hop; wraps from tail to head
+        current->data->play();
     }
 };
 
